@@ -2,7 +2,7 @@
 
 from coinpaprika import client as Coinpaprika
 
-from services.rate_limiter import rate_limited
+from services.rate_limiter import rate_limited_context
 from services.backoff import simple_retry
 
 
@@ -12,7 +12,7 @@ _client = Coinpaprika.Client()
 def _fetch() -> list[dict]:
     """Fetch tickers from CoinPaprika via the SDK."""
 
-    with rate_limited():
+    with rate_limited_context():
         # The SDK exposes high-level helpers like `tickers()`.
         return _client.tickers()
 

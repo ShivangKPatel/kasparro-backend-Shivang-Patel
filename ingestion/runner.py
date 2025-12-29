@@ -19,8 +19,10 @@ def run_etl():
         }
 
         for source, records in sources.items():
-            cp = db.get(Checkpoint, source) or Checkpoint(source=source, cursor="0")
-            db.add(cp)
+            cp = db.query(Checkpoint).filter_by(source=source).first()
+            if cp is None:
+                cp = Checkpoint(source=source, cursor="0")
+                db.add(cp)
 
             for idx, r in enumerate(records):
                 if idx <= int(cp.cursor):
@@ -31,7 +33,22 @@ def run_etl():
                     raise RuntimeError("Injected failure")
 
                 db.add(RawData(source=source, payload=r))
-                db.add(Coin(**normalize_coin(r, source)))
+                # Normalize and upsert by canonical_id to unify identities across sources
+                coin_data = normalize_coin(r, source)
+                canonical = coin_data.get("canonical_id")
+                if canonical:
+                    existing = db.query(Coin).filter_by(canonical_id=canonical).first()
+                    if existing:
+                        # update numeric fields and last_updated/source
+                        existing.price_usd = coin_data.get("price_usd")
+                        existing.market_cap_usd = coin_data.get("market_cap_usd")
+                        existing.volume_24h_usd = coin_data.get("volume_24h_usd")
+                        existing.last_updated = coin_data.get("last_updated")
+                        existing.source = coin_data.get("source")
+                    else:
+                        db.add(Coin(**coin_data))
+                else:
+                    db.add(Coin(**coin_data))
                 cp.cursor = str(idx)
 
             db.commit()
